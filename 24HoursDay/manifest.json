@@ -1,0 +1,10 @@
+{
+    "Name": "24HourDay",
+    "Author": "rosarywang",
+    "Version": "1.0.0",
+    "Description": "Allow 24 hours a day",
+    "UniqueID": "rosarywang.24HourDay",
+    "EntryDll": "24HourDay.dll",
+    "MinimumApiVersion": "2.4",
+    "UpdateKeys": []
+}
