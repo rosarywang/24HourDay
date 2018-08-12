@@ -166,9 +166,6 @@ namespace _24HourDay
                      */
                     this.Monitor.Log($"Attempt to restart the day");
                     Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                    Game1.player.freezePause = 7000;
-                    Game1.player.faceDirection(2);
-                    Game1.player.completelyStopAnimatingOrDoingAction();
                     startPassOut();
                     break;
             }
@@ -180,6 +177,8 @@ namespace _24HourDay
         private void startPassOut()
         {
             this.Monitor.Log($"startPassOut called.");
+            Game1.player.faceDirection(2);
+            Game1.player.completelyStopAnimatingOrDoingAction();
             Game1.player.FarmerSprite.pauseForSingleAnimation = false;
             Game1.player.FarmerSprite.animateOnce(getPassOutAnimation());
             this.Monitor.Log($"startPassOut ended.");
