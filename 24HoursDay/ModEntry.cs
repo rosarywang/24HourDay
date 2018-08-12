@@ -100,8 +100,13 @@ namespace _24HourDay
             this.CurrentStamina = Game1.player.stamina;
             this.CurrentHealth = Game1.player.health;
 
-            if (!Context.IsWorldReady || Game1.timeOfDay <= 2550 || Game1.timeOfDay >= 3000)
+            if (!Context.IsWorldReady || Game1.timeOfDay <= 2540 || Game1.timeOfDay >= 3000)
                 return;
+            if(Game1.timeOfDay <= 2550)
+            {
+                checkRidingHorse();
+                return;
+            }
             if (!Game1.newDay)
             {
                 if (Game1.timeOfDay == 2600 && Game1.dayTimeMoneyBox.timeShakeTimer == 2000)
@@ -114,15 +119,7 @@ namespace _24HourDay
                     TickCount++;
                 }
                 else
-                {
-                    IsRidingHorse = Game1.player.isRidingHorse();
-                    //this.Monitor.Log($"IsRidingHorse check {IsRidingHorse}");
-                    if (IsRidingHorse)
-                        Horse = Game1.player.mount;
-                    else
-                        Horse = null;
-                    //this.Monitor.Log($"Horse check {Horse == null}");
-                }
+                    checkRidingHorse();
 
                 if (HasPassOut)
                 {
@@ -131,6 +128,17 @@ namespace _24HourDay
                     HasPassOut = false;
                 }
             }
+        }
+
+        private void checkRidingHorse()
+        {
+            IsRidingHorse = Game1.player.isRidingHorse();
+            //this.Monitor.Log($"IsRidingHorse check {IsRidingHorse}");
+            if (IsRidingHorse)
+                Horse = Game1.player.mount;
+            else
+                Horse = null;
+            //this.Monitor.Log($"Horse check {Horse == null}");
         }
 
         /*
@@ -152,10 +160,10 @@ namespace _24HourDay
             {
                 //this.Monitor.Log($"Reinstate Riding Horse Animation");
                 Horse.rider = Game1.player;
-                Horse.rider.faceGeneralDirection(Utility.PointToVector2(Horse.GetBoundingBox().Center), 0, false);
+                //Horse.rider.faceGeneralDirection(Utility.PointToVector2(Horse.GetBoundingBox().Center), 0, false);
                 Horse.rider.showNotCarrying();
-                if ((double)Horse.rider.Position.X < (double)Horse.Position.X)
-                    Horse.rider.faceDirection(1);
+                //if ((double)Horse.rider.Position.X < (double)Horse.Position.X)
+                //    Horse.rider.faceDirection(1);
                 Horse.mounting.Value = true;
                 //this.Monitor.Log($"Reinstate Riding Horse Animation End");
             }
