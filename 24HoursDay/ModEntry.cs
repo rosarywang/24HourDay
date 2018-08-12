@@ -19,42 +19,44 @@ namespace _24HourDay
 
         private int PreCollapseHealth;
 
-        private bool StartToPassOut;
+        private bool HasPassed2600;
 
         private bool HasPassOut;
-        
+
+        private int TickCount;
+
         public override void Entry(IModHelper helper)
         {
             if (!Game1.IsMultiplayer)
             {
                 SaveEvents.AfterLoad += this.SaveEvents_AfterLoad;
+                SaveEvents.BeforeSave += this.SaveEvents_BeforeSave;
                 TimeEvents.AfterDayStarted += this.TimeEvents_AfterDayStarted;
                 GameEvents.UpdateTick += this.GameEvents_UpdateTick;
             }
         }
 
+        #region SaveEvents_AfterLoad
+
         public void SaveEvents_AfterLoad(object sender, EventArgs e)
         {
-            this.Monitor.Log($"SaveEvents_AfterLoad called");
+            //this.Monitor.Log($"SaveEvents_AfterLoad called");
 
             IReflectedField<NetEvent0> passOutEventField = this.Helper.Reflection.GetField<NetEvent0>(Game1.player, "passOutEvent");
             NetEvent0 passOutEvent = new NetEvent0();
             passOutEvent.onEvent += new NetEvent0.Event(this.performPassOut);
             passOutEventField.SetValue(passOutEvent);
 
-            //TODO: inject new version of performTenMinuteClockUpdate()
-
-            this.Monitor.Log($"SaveEvents_AfterLoad ended");
+            //this.Monitor.Log($"SaveEvents_AfterLoad ended");
         }
 
         private void performPassOut()
         {
-            Farmer farmer = Game1.player;
-            if ((double)farmer.stamina <= -15.0)
+            if ((double)Game1.player.stamina <= -15.0)
             {
-                farmer.faceDirection(2);
-                farmer.completelyStopAnimatingOrDoingAction();
-                farmer.animateOnce(293);
+                Game1.player.faceDirection(2);
+                Game1.player.completelyStopAnimatingOrDoingAction();
+                Game1.player.animateOnce(293);
             }
             else
             {
@@ -62,175 +64,130 @@ namespace _24HourDay
             }
         }
 
-        public void TimeEvents_AfterDayStarted(object sender, EventArgs e)
+        #endregion
+
+        #region SaveEvents_BeforeSave
+
+        /*
+         * Reinstate stamina and health if it was higher when passed out at night
+         */
+        public void SaveEvents_BeforeSave(object sender, EventArgs e)
         {
-            StartToPassOut = false;
-            HasPassOut = false;
-            //Reinstate stamina and health if it was higher when passed out at night
             if (Game1.player.stamina < this.PreCollapseStamina)
                 Game1.player.stamina = this.PreCollapseStamina;
             if (Game1.player.health < this.PreCollapseHealth)
                 Game1.player.health = this.PreCollapseHealth;
         }
-        
+
+        #endregion
+
+        #region TimeEvents_AfterDayStarted
+
+        public void TimeEvents_AfterDayStarted(object sender, EventArgs e)
+        {
+            HasPassOut = false;
+            TickCount = 0;
+            HasPassed2600 = false;
+        }
+
+        #endregion
+
+        #region GameEvents_UpdateTick
+
         private void GameEvents_UpdateTick(object sender, EventArgs e)
         {
             this.PreCollapseStamina = Game1.player.stamina;
             this.PreCollapseHealth = Game1.player.health;
 
-            if (!Context.IsWorldReady || Game1.timeOfDay <= 2550)
+            if (!Context.IsWorldReady || Game1.timeOfDay <= 2550 || Game1.timeOfDay >= 3000)
                 return;
-            if (!Game1.newDay && StartToPassOut == false)
+            if (!Game1.newDay)
             {
-                Farmer farmer = Game1.player;
-
-                if (HasPassOut)
+                if (Game1.timeOfDay == 2600 && Game1.dayTimeMoneyBox.timeShakeTimer == 2000)
                 {
-                    this.Monitor.Log($"GameEvents_UpdateTick called. set freezePause to 0");
-                    farmer.freezePause = 0;
-                    HasPassOut = false;
+                    if (!HasPassed2600)
+                        HasPassed2600 = true;
+                    else
+                        performTenMinuteClockUpdate();
+
+                    if (Game1.timeOfDay % 100 != 0 && Game1.dayTimeMoneyBox.timeShakeTimer > 0)
+                        Game1.dayTimeMoneyBox.timeShakeTimer = 0;
+
+                    TickCount++;
                 }
                 
-                //Harvest Moon style day cycle
-                //Passed out at 6 AM and return home
-                //No money lost
-                if (Game1.timeOfDay >= 3000)
+                if (HasPassOut)
                 {
-                    this.Monitor.Log($"FourthUpdateTick called. Attempt to restart the day");
-                    StartToPassOut = true;
-                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                    farmer.freezePause = 7000;
-                    startPassOut();
-                    this.Monitor.Log($"FourthUpdateTick ended.");
+                    //this.Monitor.Log($"GameEvents_UpdateTick called. set freezePause to 0");
+                    Game1.player.freezePause = 0;
+                    HasPassOut = false;
                 }
             }
         }
 
-        //Based on StardewValley.Game1.performTenMinuteClockUpdate()
-        private Action performTenMinuteClockUpdate()
+        /*
+         * Based on StardewValley.Game1.performTenMinuteClockUpdate()
+         */
+        private void performTenMinuteClockUpdate()
         {
-            return (Action)(() =>
+            Game1.timeOfDay += (TickCount * 10);
+            if (Game1.timeOfDay % 100 >= 60)
             {
-                int trulyDarkTime = Game1.getTrulyDarkTime();
-                Game1.gameTimeInterval = 0;
-                if (Game1.IsMasterGame)
-                    Game1.timeOfDay += 10;
-                if (Game1.timeOfDay % 100 >= 60)
-                    Game1.timeOfDay = Game1.timeOfDay - Game1.timeOfDay % 100 + 100;
-                Game1.timeOfDay = Math.Min(Game1.timeOfDay, 3000);
-                if (Game1.isLightning && Game1.timeOfDay < 2400)
-                    Utility.performLightningUpdate();
-                if (Game1.timeOfDay == trulyDarkTime)
-                    Game1.currentLocation.switchOutNightTiles();
-                else if (Game1.timeOfDay == Game1.getModeratelyDarkTime())
-                {
-                    if (Game1.currentLocation.IsOutdoors && !Game1.isRaining)
-                        Game1.ambientLight = Color.White;
-                    if (!Game1.isRaining && !(Game1.currentLocation is MineShaft) && (Game1.currentSong != null && !Game1.currentSong.Name.Contains("ambient")) && Game1.currentLocation is Town)
-                        Game1.changeMusicTrack("none");
-                }
-                if ((bool)((NetFieldBase<bool, NetBool>)Game1.currentLocation.isOutdoors) && !Game1.isRaining && (!Game1.eventUp && Game1.currentSong != null) && (Game1.currentSong.Name.Contains("day") && Game1.isDarkOut()))
-                    Game1.changeMusicTrack("none");
-                if (Game1.weatherIcon == 1)
-                {
-                    int int32 = Convert.ToInt32(Game1.temporaryContent.Load<Dictionary<string, string>>("Data\\Festivals\\" + Game1.currentSeason + (object)Game1.dayOfMonth)["conditions"].Split('/')[1].Split(' ')[0]);
-                    if (Game1.whereIsTodaysFest == null)
-                        Game1.whereIsTodaysFest = Game1.temporaryContent.Load<Dictionary<string, string>>("Data\\Festivals\\" + Game1.currentSeason + (object)Game1.dayOfMonth)["conditions"].Split('/')[0];
-                    if (Game1.timeOfDay == int32)
-                    {
-                        string str = Game1.temporaryContent.Load<Dictionary<string, string>>("Data\\Festivals\\" + Game1.currentSeason + (object)Game1.dayOfMonth)["conditions"].Split('/')[0];
-                        if (!(str == "Forest"))
-                        {
-                            if (!(str == "Town"))
-                            {
-                                if (str == "Beach")
-                                    str = Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2639");
-                            }
-                            else
-                                str = Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2637");
-                        }
-                        else
-                            str = Game1.currentSeason.Equals("winter") ? Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2634") : Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2635");
-                        Game1.showGlobalMessage(Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2640", (object)Game1.temporaryContent.Load<Dictionary<string, string>>("Data\\Festivals\\" + Game1.currentSeason + (object)Game1.dayOfMonth)["name"]) + str);
-                    }
-                }
-                Game1.player.performTenMinuteUpdate();
-                switch (Game1.timeOfDay)
-                {
-                    case 1200:
-                        if ((bool)((NetFieldBase<bool, NetBool>)Game1.currentLocation.isOutdoors) && !Game1.isRaining && (Game1.currentSong == null || Game1.currentSong.IsStopped || Game1.currentSong.Name.ToLower().Contains("ambient")))
-                        {
-                            Game1.playMorningSong();
-                            break;
-                        }
-                        break;
-                    case 2000:
-                        if (!Game1.isRaining && Game1.currentLocation is Town)
-                        {
-                            Game1.changeMusicTrack("none");
-                            break;
-                        }
-                        break;
-                    case 2400:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        Game1.showGlobalMessage(Game1.content.LoadString("Strings\\StringsFromCSFiles:Game1.cs.2652"));
-                        break;
-                    case 2500:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        break;
-                    case 2600:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        break;
-                    case 2700:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        break;
-                    case 2800:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        break;
-                    case 2900:
-                        Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
-                        Game1.player.doEmote(24);
-                        break;
-                }
-                foreach (GameLocation location in (IEnumerable<GameLocation>)Game1.locations)
-                {
-                    location.performTenMinuteUpdate(Game1.timeOfDay);
-                    if (location is Farm)
-                        ((BuildableGameLocation)location).timeUpdate(10);
-                }
-                MineShaft.UpdateMines10Minutes(Game1.timeOfDay);
-                if (!Game1.IsMasterGame || Game1.farmEvent != null)
-                    return;
-                Game1.netWorldState.Value.UpdateFromGame1();
-            });
+                Game1.timeOfDay = Game1.timeOfDay - Game1.timeOfDay % 100 + 100;
+                TickCount += 4;
+            }
+            Game1.timeOfDay = Math.Min(Game1.timeOfDay, 3000);
+            /*
+             * TODO: Reinstate horse riding if IsRidingHorse()
+             */
+            switch (Game1.timeOfDay)
+            {
+                case 2600:
+                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
+                    Game1.player.doEmote(24);
+                    break;
+                case 2700:
+                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
+                    Game1.player.doEmote(24);
+                    break;
+                case 2800:
+                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
+                    Game1.player.doEmote(24);
+                    break;
+                case 2900:
+                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
+                    Game1.player.doEmote(24);
+                    break;
+                case 3000:
+                    /*
+                     * Harvest Moon style day cycle
+                     * Passed out at 6 AM and return home
+                     * No money lost
+                     */
+                    this.Monitor.Log($"Attempt to restart the day");
+                    Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
+                    Game1.player.freezePause = 7000;
+                    Game1.player.faceDirection(2);
+                    Game1.player.completelyStopAnimatingOrDoingAction();
+                    startPassOut();
+                    break;
+            }
         }
 
-        //Based on StardewValley.Farmer.performPassOut()
+        /*
+         * Based on StardewValley.Farmer.performPassOut()
+         */
         private void startPassOut()
         {
             this.Monitor.Log($"startPassOut called.");
-            Farmer farmer = Game1.player;
-            farmer.faceDirection(2);
-            farmer.completelyStopAnimatingOrDoingAction();
-            farmer.CanMove = false;
-            FarmerSprite sprite = (FarmerSprite)farmer.Sprite;
-            sprite.PauseForSingleAnimation = true;
-            sprite.currentSingleAnimationInterval = 100f;
-            sprite.CurrentAnimation = ((IEnumerable<FarmerSprite.AnimationFrame>)getPassOutAnimation()).ToList<FarmerSprite.AnimationFrame>();
-            this.Monitor.Log($"startPassOut currentAnimation set.");
-            sprite.currentAnimationIndex = 0;
-            sprite.CurrentFrame = sprite.CurrentAnimation[0].frame;
-            sprite.interval = (float)sprite.CurrentAnimationFrame.milliseconds;
-            sprite.timer = 0.0f;
+            Game1.player.FarmerSprite.pauseForSingleAnimation = false;
+            Game1.player.FarmerSprite.animateOnce(getPassOutAnimation());
             this.Monitor.Log($"startPassOut ended.");
         }
 
-        //Based on StardewValley.FarmerSprite animation# 293
+        /*
+         * Based on StardewValley.FarmerSprite animation# 293
+         */
         private FarmerSprite.AnimationFrame[] getPassOutAnimation()
         {
             this.Monitor.Log($"getPassOutAnimation called.");
@@ -248,7 +205,9 @@ namespace _24HourDay
 
         }
 
-        //Based on StardewValley.Farmer.passOutFromTired()
+        /*
+         * Based on StardewValley.Farmer.passOutFromTired()
+         */
         private void passOut(Farmer who)
         {
             this.Monitor.Log($"passOut called.");
@@ -271,7 +230,7 @@ namespace _24HourDay
                 this.Monitor.Log($"callback called.");
                 who.Position = bed;
                 who.currentLocation.lastTouchActionLocation = bed;
-                if (!Game1.IsMultiplayer || Game1.timeOfDay >= 2600)
+                if (!Game1.IsMultiplayer || Game1.timeOfDay >= 3000)
                     Game1.PassOutNewDay();
                 Game1.changeMusicTrack("none");
                 this.Monitor.Log($"callback ended.");
@@ -289,5 +248,7 @@ namespace _24HourDay
                 callback();
             this.Monitor.Log($"passOut ended.");
         }
+
+        #endregion
     }
 }
