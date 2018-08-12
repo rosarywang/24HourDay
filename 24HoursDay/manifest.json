@@ -6,5 +6,5 @@
     "UniqueID": "kiyunoshi.24HoursDay",
     "EntryDll": "24HoursDay.dll",
     "MinimumApiVersion": "2.6",
-    "UpdateKeys": [ "rosarywang/StardewValleyMod" ]
+    "UpdateKeys": [ "Nexus:2659", "GitHub:rosarywang/StardewValleyMod" ]
 }
