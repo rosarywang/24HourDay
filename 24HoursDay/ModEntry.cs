@@ -2,28 +2,28 @@
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Input;
 using Netcode;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.Locations;
-using StardewValley.Tools;
+using StardewValley.Characters;
 
 namespace _24HourDay
 {
     public class ModEntry : Mod
     {
 
-        private float PreCollapseStamina;
+        private float CurrentStamina;
 
-        private int PreCollapseHealth;
-
-        private bool HasPassed2600;
+        private int CurrentHealth;
 
         private bool HasPassOut;
 
         private int TickCount;
+
+        private bool IsRidingHorse;
+
+        private Horse Horse;
 
         public override void Entry(IModHelper helper)
         {
@@ -73,10 +73,10 @@ namespace _24HourDay
          */
         public void SaveEvents_BeforeSave(object sender, EventArgs e)
         {
-            if (Game1.player.stamina < this.PreCollapseStamina)
-                Game1.player.stamina = this.PreCollapseStamina;
-            if (Game1.player.health < this.PreCollapseHealth)
-                Game1.player.health = this.PreCollapseHealth;
+            if (Game1.player.stamina < this.CurrentStamina)
+                Game1.player.stamina = this.CurrentStamina;
+            if (Game1.player.health < this.CurrentHealth)
+                Game1.player.health = this.CurrentHealth;
         }
 
         #endregion
@@ -87,7 +87,8 @@ namespace _24HourDay
         {
             HasPassOut = false;
             TickCount = 0;
-            HasPassed2600 = false;
+            IsRidingHorse = false;
+            Horse = null;
         }
 
         #endregion
@@ -96,8 +97,8 @@ namespace _24HourDay
 
         private void GameEvents_UpdateTick(object sender, EventArgs e)
         {
-            this.PreCollapseStamina = Game1.player.stamina;
-            this.PreCollapseHealth = Game1.player.health;
+            this.CurrentStamina = Game1.player.stamina;
+            this.CurrentHealth = Game1.player.health;
 
             if (!Context.IsWorldReady || Game1.timeOfDay <= 2550 || Game1.timeOfDay >= 3000)
                 return;
@@ -105,17 +106,24 @@ namespace _24HourDay
             {
                 if (Game1.timeOfDay == 2600 && Game1.dayTimeMoneyBox.timeShakeTimer == 2000)
                 {
-                    if (!HasPassed2600)
-                        HasPassed2600 = true;
-                    else
-                        performTenMinuteClockUpdate();
+                    performTenMinuteClockUpdate();
 
                     if (Game1.timeOfDay % 100 != 0 && Game1.dayTimeMoneyBox.timeShakeTimer > 0)
                         Game1.dayTimeMoneyBox.timeShakeTimer = 0;
 
                     TickCount++;
                 }
-                
+                else
+                {
+                    IsRidingHorse = Game1.player.isRidingHorse();
+                    //this.Monitor.Log($"IsRidingHorse check {IsRidingHorse}");
+                    if (IsRidingHorse)
+                        Horse = Game1.player.mount;
+                    else
+                        Horse = null;
+                    //this.Monitor.Log($"Horse check {Horse == null}");
+                }
+
                 if (HasPassOut)
                 {
                     //this.Monitor.Log($"GameEvents_UpdateTick called. set freezePause to 0");
@@ -138,8 +146,19 @@ namespace _24HourDay
             }
             Game1.timeOfDay = Math.Min(Game1.timeOfDay, 3000);
             /*
-             * TODO: Reinstate horse riding if IsRidingHorse()
+             * Reinstate riding horse whenever player dismount during original time update
              */
+            if (IsRidingHorse && Horse != null && Horse.rider == null)
+            {
+                //this.Monitor.Log($"Reinstate Riding Horse Animation");
+                Horse.rider = Game1.player;
+                Horse.rider.faceGeneralDirection(Utility.PointToVector2(Horse.GetBoundingBox().Center), 0, false);
+                Horse.rider.showNotCarrying();
+                if ((double)Horse.rider.Position.X < (double)Horse.Position.X)
+                    Horse.rider.faceDirection(1);
+                Horse.mounting.Value = true;
+                //this.Monitor.Log($"Reinstate Riding Horse Animation End");
+            }
             switch (Game1.timeOfDay)
             {
                 case 2600:
@@ -164,7 +183,7 @@ namespace _24HourDay
                      * Passed out at 6 AM and return home
                      * No money lost
                      */
-                    this.Monitor.Log($"Attempt to restart the day");
+                    //this.Monitor.Log($"Attempt to restart the day");
                     Game1.dayTimeMoneyBox.timeShakeTimer = 2000;
                     startPassOut();
                     break;
@@ -176,12 +195,12 @@ namespace _24HourDay
          */
         private void startPassOut()
         {
-            this.Monitor.Log($"startPassOut called.");
+            //this.Monitor.Log($"startPassOut called.");
             Game1.player.faceDirection(2);
             Game1.player.completelyStopAnimatingOrDoingAction();
             Game1.player.FarmerSprite.pauseForSingleAnimation = false;
             Game1.player.FarmerSprite.animateOnce(getPassOutAnimation());
-            this.Monitor.Log($"startPassOut ended.");
+            //this.Monitor.Log($"startPassOut ended.");
         }
 
         /*
@@ -189,7 +208,7 @@ namespace _24HourDay
          */
         private FarmerSprite.AnimationFrame[] getPassOutAnimation()
         {
-            this.Monitor.Log($"getPassOutAnimation called.");
+            //this.Monitor.Log($"getPassOutAnimation called.");
             Game1.player.FarmerSprite.loopThisAnimation = false;
             return new FarmerSprite.AnimationFrame[7]
             {
@@ -209,7 +228,7 @@ namespace _24HourDay
          */
         private void passOut(Farmer who)
         {
-            this.Monitor.Log($"passOut called.");
+            //this.Monitor.Log($"passOut called.");
             if (who.isRidingHorse())
                 who.mount.dismount();
             if (Game1.activeClickableMenu != null)
@@ -226,17 +245,17 @@ namespace _24HourDay
             bed.X -= 64f;
             LocationRequest.Callback callback = (LocationRequest.Callback)(() =>
             {
-                this.Monitor.Log($"callback called.");
+                //this.Monitor.Log($"callback called.");
                 who.Position = bed;
                 who.currentLocation.lastTouchActionLocation = bed;
                 if (!Game1.IsMultiplayer || Game1.timeOfDay >= 3000)
                     Game1.PassOutNewDay();
                 Game1.changeMusicTrack("none");
-                this.Monitor.Log($"callback ended.");
+                //this.Monitor.Log($"callback ended.");
             });
             if (!(bool)((NetFieldBase<bool, NetBool>)who.isInBed))
             {
-                this.Monitor.Log($"Game1.player.isInBed called.");
+                //this.Monitor.Log($"Game1.player.isInBed called.");
                 LocationRequest locationRequest = Game1.getLocationRequest(who.homeLocation.Value, false);
                 Game1.warpFarmer(locationRequest, (int)bed.X / 64, (int)bed.Y / 64, 2);
                 locationRequest.OnWarp += callback;
@@ -245,7 +264,7 @@ namespace _24HourDay
             }
             else
                 callback();
-            this.Monitor.Log($"passOut ended.");
+            //this.Monitor.Log($"passOut ended.");
         }
 
         #endregion
